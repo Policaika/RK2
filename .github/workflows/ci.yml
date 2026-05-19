@@ -1,0 +1,74 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: write
+
+jobs:
+  build-test-package:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake g++ dpkg-dev
+
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build project
+      run: cmake --build build --config Release
+
+    - name: Run tests
+      working-directory: build
+      run: ctest --output-on-failure
+
+    - name: Create DEB package
+      run: |
+        mkdir -p deb_package/usr/bin
+        mkdir -p deb_package/DEBIAN
+        cp build/RK_ochnoe deb_package/usr/bin/
+        echo "Package: visitor-pattern" > deb_package/DEBIAN/control
+        echo "Version: 1.0.0" >> deb_package/DEBIAN/control
+        echo "Section: utils" >> deb_package/DEBIAN/control
+        echo "Priority: optional" >> deb_package/DEBIAN/control
+        echo "Architecture: amd64" >> deb_package/DEBIAN/control
+        echo "Maintainer: Your Name <your@email.com>" >> deb_package/DEBIAN/control
+        echo "Description: Visitor Design Pattern" >> deb_package/DEBIAN/control
+        dpkg-deb --build deb_package visitor-pattern_1.0.0_amd64.deb
+
+    - name: Upload DEB artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: visitor-pattern-deb
+        path: visitor-pattern_1.0.0_amd64.deb
+
+  create-release:
+    needs: build-test-package
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: visitor-pattern-deb
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: visitor-pattern_1.0.0_amd64.deb
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
